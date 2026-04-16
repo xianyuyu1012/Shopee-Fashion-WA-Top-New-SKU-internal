@@ -400,8 +400,7 @@
             if (newData.length > 0) {
                 console.log(`成功加载新增数据：${newData.length} 条记录`);
                 products = products.concat(newData);
-                updateL1(); // 数据合并后重新初始化 L1 选项
-                applyFilters(); 
+                processData(); // 使用统一的去重和初始化逻辑
                 showToast(`成功同步 ${newData.length} 条额外数据`);
             }
         } catch (error) {
@@ -474,6 +473,24 @@
 
     function processData() {
         if (products.length > 0) {
+            // --- 问题三修复：SKU 去重逻辑 ---
+            const itemMap = new Map();
+            products.forEach(row => {
+                const item = mapData(row);
+                const id = item.itemid;
+                if (!itemMap.has(id)) {
+                    itemMap.set(id, row);
+                } else {
+                    const existing = mapData(itemMap.get(id));
+                    // 如果当前行日期更新，则替换旧记录
+                    if (new Date(item.update_date) > new Date(existing.update_date)) {
+                        itemMap.set(id, row);
+                    }
+                }
+            });
+            products = Array.from(itemMap.values());
+            // --- 去重结束 ---
+
             const lastDate = mapData(products[0]).update_date;
             document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${lastDate}`;
             updateL1();
@@ -490,23 +507,44 @@
         sel.value = currentVal;
     }
 
+    // --- 问题一修复：严格联动类目逻辑 ---
     function updateL2() {
         const l1 = document.getElementById('l1Filter').value;
-        const l2Set = new Set(products.filter(r => !l1 || mapData(r).l1 === l1).map(r => mapData(r).l2).filter(v => v));
         const sel = document.getElementById('l2Filter');
         sel.innerHTML = '<option value="">L2 类目</option>';
-        [...l2Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
+        
+        if (l1) {
+            const l2Set = new Set(
+                products
+                    .filter(r => mapData(r).l1 === l1) // 严格受 L1 限制
+                    .map(r => mapData(r).l2)
+                    .filter(v => v)
+            );
+            [...l2Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
+        }
         updateL3();
     }
 
     function updateL3() {
         const l1 = document.getElementById('l1Filter').value;
         const l2 = document.getElementById('l2Filter').value;
-        const l3Set = new Set(products.filter(r => (!l1 || mapData(r).l1 === l1) && (!l2 || mapData(r).l2 === l2)).map(r => mapData(r).l3).filter(v => v));
         const sel = document.getElementById('l3Filter');
         sel.innerHTML = '<option value="">L3 类目</option>';
-        [...l3Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
+        
+        if (l1 && l2) {
+            const l3Set = new Set(
+                products
+                    .filter(r => {
+                        const i = mapData(r);
+                        return i.l1 === l1 && i.l2 === l2; // 严格受 L1 和 L2 同时限制
+                    })
+                    .map(r => mapData(r).l3)
+                    .filter(v => v)
+            );
+            [...l3Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
+        }
     }
+    // --- 类目联动修复结束 ---
 
     function applyFilters() {
         const kw = document.getElementById('searchInput').value.toLowerCase();
@@ -528,7 +566,10 @@
             const matchL3 = !l3 || i.l3 === l3;
             const matchPrice = (i.price_rmb >= minP && i.price_rmb <= maxP);
             const matchSite = !site || i.site === site;
-            const matchSeller = !seller || i.seller_type === seller;
+            
+            // --- 问题二修复：卖家类型 CNCB 筛选逻辑 ---
+            const matchSeller = !seller || clean(i.seller_type).trim().toUpperCase() === seller.trim().toUpperCase();
+            
             const matchOfficial = !official || i.is_official_shop === official;
             const matchNew = !newSku || i.is_new_sku === newSku;
 
