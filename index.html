@@ -190,7 +190,6 @@
             z-index: 10;
         }
 
-        /* 新品标签样式 */
         .new-sku-label {
             position: absolute; top: 10px; right: 10px;
             background: var(--accent);
@@ -347,11 +346,11 @@
             <span class="filter-label">卖家类型</span>
             <select id="sellerTypeFilter" onchange="applyFilters()">
                 <option value="">全部类型</option>
-                <option value="CB">CB</option>
+                <option value="CB">CNCB</option>
                 <option value="Local">Local</option>
             </select>
 
-            <span class="filter-label">官方店铺</span>
+            <span class="filter-label">official shop</span>
             <select id="officialShopFilter" onchange="applyFilters()">
                 <option value="">全部</option>
                 <option value="Y">是</option>
@@ -377,62 +376,43 @@
 <footer>Shopee Fashion Internal Selection System - CONFIDENTIAL</footer>
 
 <script>
-    // 原有逻辑变量定义
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQSpzvgcuumlWbTyK87Cx-OmweMg86O8UAnNkv_AjRuxMXBQpr-njW5zvDiVftu9bdEn7g9bk0n58vy/pub?gid=454641794&single=true&output=csv';
     const CACHE_KEY = 'shopee_fashion_data_v2';
     const CACHE_TIME = 1000 * 60 * 60;
     let products = [], filteredData = [], currentPage = 1;
     const pageSize = 40;
     const siteFlag = { BR:'🇧🇷', MX:'🇲🇽', MY:'🇲🇾', PH:'🇵🇭', SG:'🇸🇬', TH:'🇹🇭', TW:'🇹🇼', VN:'🇻🇳' };
 
-    // ==========================================
-    // 📢 新增代码模块 START：接入外部 Google Sheet 数据源
-    // ==========================================
-    const NEW_DATASOURCE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
+    const NEW_DATASOURCE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQSpzvgcuumlWbTyK87Cx-OmweMg86O8UAnNkv_AjRuxMXBQpr-njW5zvDiVftu9bdEn7g9bk0n58vy/pub?output=csv';
 
     async function loadNewDataSource() {
         console.log("正在加载新增数据源...");
         try {
             const response = await fetch(NEW_DATASOURCE_URL);
-            
-            // 权限与访问检查
             if (!response.ok) {
                 throw new Error(`无法访问数据源: ${response.status} ${response.statusText}`);
             }
-
             const csvText = await response.text();
-            
-            // 简单的 CSV 解析（假设格式与原数据一致）
             const rows = csvText.split('\n').map(row => {
-                // 处理 CSV 中的引号问题
                 return row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-            }).filter(row => row.length > 5); // 过滤无效行
-
-            // 跳过表头
+            }).filter(row => row.length > 5);
             const newData = rows.slice(1);
-            
             if (newData.length > 0) {
                 console.log(`成功加载新增数据：${newData.length} 条记录`);
-                // 合并数据：不影响原有 products 逻辑
                 products = products.concat(newData);
-                
-                // 重新渲染页面以包含新数据
+                updateL1(); // 数据合并后重新初始化 L1 选项
                 applyFilters(); 
                 showToast(`成功同步 ${newData.length} 条额外数据`);
             }
         } catch (error) {
-            console.warn("⚠️ 新增数据源接入失败，请检查链接权限或网络:", error);
+            console.warn("⚠️ 新增数据源接入失败:", error);
             showToast("部分数据源加载失败，请检查公开访问权限");
         }
     }
 
-    // 在页面加载完成后独立启动新增任务
     window.addEventListener('load', () => {
-        setTimeout(loadNewDataSource, 1500); // 延迟执行，确保不竞争原有加载资源
+        setTimeout(loadNewDataSource, 1500);
     });
-    // ==========================================
-    // 📢 新增代码模块 END
-    // ==========================================
 
     function showToast(msg) {
         const t = document.getElementById('toast');
@@ -447,9 +427,6 @@
         return parseFloat(val) || 0;
     };
 
-    /**
-     * 字段映射 (共 20 个字段)
-     */
     const mapData = (row) => ({
         title: clean(row[0]),
         price_rmb: toNum(row[1]),
@@ -472,9 +449,6 @@
         daily_revenue: toNum(row[18]),
         ads_pos_neg: clean(row[19])
     });
-
-    // ... 原有 init, applyFilters, render 等函数保持完全不变 ...
-    // (此处省略原有 JS 逻辑，保持原有文件内的函数定义)
 
     async function init() {
         const cache = localStorage.getItem(CACHE_KEY);
@@ -510,8 +484,10 @@
     function updateL1() {
         const l1Set = new Set(products.map(r => mapData(r).l1).filter(v => v));
         const sel = document.getElementById('l1Filter');
+        const currentVal = sel.value;
         sel.innerHTML = '<option value="">L1 类目</option>';
         [...l1Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
+        sel.value = currentVal;
     }
 
     function updateL2() {
@@ -547,10 +523,16 @@
         filteredData = products.filter(r => {
             const i = mapData(r);
             const matchKw = !kw || i.title.toLowerCase().includes(kw) || i.itemid.includes(kw) || i.shop_name.toLowerCase().includes(kw) || i.team.toLowerCase().includes(kw);
-            return matchKw && (!l1 || i.l1 === l1) && (!l2 || i.l2 === l2) && (!l3 || i.l3 === l3) &&
-                   (i.price_rmb >= minP && i.price_rmb <= maxP) &&
-                   (!site || i.site === site) && (!seller || i.seller_type === seller) &&
-                   (!official || i.is_official_shop === official) && (!newSku || i.is_new_sku === newSku);
+            const matchL1 = !l1 || i.l1 === l1;
+            const matchL2 = !l2 || i.l2 === l2;
+            const matchL3 = !l3 || i.l3 === l3;
+            const matchPrice = (i.price_rmb >= minP && i.price_rmb <= maxP);
+            const matchSite = !site || i.site === site;
+            const matchSeller = !seller || i.seller_type === seller;
+            const matchOfficial = !official || i.is_official_shop === official;
+            const matchNew = !newSku || i.is_new_sku === newSku;
+
+            return matchKw && matchL1 && matchL2 && matchL3 && matchPrice && matchSite && matchSeller && matchOfficial && matchNew;
         });
 
         const sort = document.getElementById('sortOrder').value;
@@ -593,6 +575,8 @@
                         <div class="extra-info">
                             <div class="extra-item"><span class="extra-label">团队:</span>${i.team}</div>
                             <div class="extra-item"><span class="extra-label">店铺:</span>${i.shop_name}</div>
+                            <div class="extra-item"><span class="extra-label">卖家类型:</span>${i.seller_type}</div>
+                            <div class="extra-item"><span class="extra-label">官方店铺:</span>${i.is_official_shop === 'Y' ? '是' : '否'}</div>
                         </div>
                         <div class="footer-row">
                             <div class="itemid-box" onclick="copyText('${i.itemid}')">ID: ${i.itemid}</div>
@@ -633,6 +617,8 @@
     function clearFilters() {
         document.getElementById('searchInput').value = '';
         document.getElementById('l1Filter').value = '';
+        document.getElementById('l2Filter').value = '';
+        document.getElementById('l3Filter').value = '';
         document.getElementById('minPrice').value = '';
         document.getElementById('maxPrice').value = '';
         document.getElementById('siteFilter').value = '';
@@ -640,7 +626,8 @@
         document.getElementById('officialShopFilter').value = '';
         document.getElementById('isNewSkuFilter').value = '';
         document.getElementById('sortOrder').value = 'dateDesc';
-        updateL2(); applyFilters();
+        updateL2(); 
+        applyFilters();
     }
 
     init();
