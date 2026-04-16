@@ -378,7 +378,7 @@
 
 <script>
     // 原有逻辑变量定义
-    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQSpzvgcuumlWbTyK87Cx-OmweMg86O8UAnNkv_AjRuxMXBQpr-njW5zvDiVftu9bdEn7g9bk0n58vy/pub?gid=454641794&single=true&output=csv';
+    const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
     const CACHE_KEY = 'shopee_fashion_data_v2';
     const CACHE_TIME = 1000 * 60 * 60;
     let products = [], filteredData = [], currentPage = 1;
@@ -388,7 +388,7 @@
     // ==========================================
     // 📢 新增代码模块 START：接入外部 Google Sheet 数据源
     // ==========================================
-    const NEW_DATASOURCE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQSpzvgcuumlWbTyK87Cx-OmweMg86O8UAnNkv_AjRuxMXBQpr-njW5zvDiVftu9bdEn7g9bk0n58vy/pub?gid=454641794&single=true&output=csv';
+    const NEW_DATASOURCE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
 
     async function loadNewDataSource() {
         console.log("正在加载新增数据源...");
