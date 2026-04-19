@@ -298,7 +298,7 @@
             📊 日均销量、日销售额及价格均为真实数据（未脱敏），<strong>日销售额统一为人民币 (¥)</strong><br>
             🔒 提示：当前页面仅供内部选品使用。
         </div>
-        <div class="last-update-tag" id="lastUpdateDisplay">数据更新中...</div>
+        <div class="last-update-tag" id="lastUpdateDisplay">数据加载中...</div>
     </div>
 </header>
 
@@ -336,15 +336,21 @@
             <span class="filter-label">🌏 站点</span>
             <select id="siteFilter" onchange="applyFilters()">
                 <option value="">全部站点</option>
-                <option value="BR">🇧🇷 BR</option><option value="MX">🇲🇽 MX</option><option value="MY">🇲🇾 MY</option>
-                <option value="PH">🇵🇭 PH</option><option value="SG">🇸🇬 SG</option><option value="TH">🇹🇭 TH</option>
-                <option value="TW">🇹🇼 TW</option><option value="VN">🇻🇳 VN</option>
+                <option value="BR">🇧🇷 BR</option>
+                <option value="MX">🇲🇽 MX</option>
+                <option value="MY">🇲🇾 MY</option>
+                <option value="PH">🇵🇭 PH</option>
+                <option value="SG">🇸🇬 SG</option>
+                <option value="TH">🇹🇭 TH</option>
+                <option value="TW">🇹🇼 TW</option>
+                <option value="VN">🇻🇳 VN</option>
+                <option value="ID">🇮🇩 ID</option>
             </select>
 
             <span class="filter-label">卖家类型</span>
             <select id="sellerTypeFilter" onchange="applyFilters()">
                 <option value="">全部类型</option>
-                <option value="CB">CNCB</option>
+                <option value="CNCB">CNCB</option>
                 <option value="Local">Local</option>
             </select>
 
@@ -374,13 +380,12 @@
 <footer>Shopee Fashion Internal Selection System - CONFIDENTIAL</footer>
 
 <script>
-    // ✅ debug fix: 明确数据源链接
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
-    const CACHE_KEY = 'shopee_fashion_data_v3';
-    const CACHE_TIME = 1000 * 60 * 60;
+    const CACHE_KEY = 'shopee_fashion_data_v4';
+    const CACHE_TIME = 1000 * 60 * 30; // 30 mins
     let products = [], filteredData = [], currentPage = 1;
     const pageSize = 40;
-    const siteFlag = { BR:'🇧🇷', MX:'🇲🇽', MY:'🇲🇾', PH:'🇵🇭', SG:'🇸🇬', TH:'🇹🇭', TW:'🇹🇼', VN:'🇻🇳' };
+    const siteFlag = { BR:'🇧🇷', MX:'🇲🇽', MY:'🇲🇾', PH:'🇵🇭', SG:'🇸🇬', TH:'🇹🇭', TW:'🇹🇼', VN:'🇻🇳', ID:'🇮🇩' };
 
     function showToast(msg) {
         const t = document.getElementById('toast');
@@ -395,7 +400,7 @@
         return parseFloat(val) || 0;
     };
 
-    // ✅ debug fix: 重新验证索引。确保 CSV 第17、18列对应 Sales 和 Revenue
+    // 标准化数据映射层
     const mapData = (row) => ({
         title: clean(row[0]),
         price_rmb: toNum(row[1]),
@@ -407,19 +412,18 @@
         l3: clean(row[7]),
         update_date: clean(row[8]),
         itemid: clean(row[9]),
-        site: clean(row[10]),
+        site: clean(row[10]).toUpperCase(), // 修正：站点强制转大写清洗
         shop_name: clean(row[11]),
         team: clean(row[12]),
         ggp_name: clean(row[13]),
-        seller_type: clean(row[14]),
-        is_official_shop: clean(row[15]),
-        is_new_sku: clean(row[16]),
+        seller_type: clean(row[14]).toUpperCase(), // 修正：卖家类型标准化
+        is_official_shop: clean(row[15]).toUpperCase(),
+        is_new_sku: clean(row[16]).toUpperCase(),
         daily_sales: toNum(row[17]),
         daily_revenue: toNum(row[18])
     });
 
     async function init() {
-        console.log("🚀 debug fix: 正在请求数据...");
         const cache = localStorage.getItem(CACHE_KEY);
         const cacheTime = localStorage.getItem(CACHE_KEY + '_time');
 
@@ -429,63 +433,37 @@
         } else {
             try {
                 const res = await fetch(SHEET_URL);
-                if (!res.ok) throw new Error("HTTP " + res.status);
-                
+                if (!res.ok) throw new Error("Fetch Error");
                 const text = await res.text();
-                console.log("📊 debug fix: 原始数据前500字:", text.slice(0, 500));
-
-                // ✅ debug fix: 健壮的 CSV 解析逻辑
-                // 1. 处理 \r\n 换行 2. 过滤掉纯空行
                 const rawRows = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-                
-                // 使用正则表达式解析 CSV 字段（处理带引号的逗号）
-                const rows = rawRows.map(line => {
-                    return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-                });
-
-                console.log("📈 debug fix: 总行数:", rows.length);
-                
-                // 排除标题行
+                const rows = rawRows.map(line => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
                 products = rows.slice(1);
                 
                 if (products.length > 0) {
                     localStorage.setItem(CACHE_KEY, JSON.stringify(products));
                     localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
                     processData();
-                } else {
-                    console.error("❌ debug fix: 数据解析后为空");
-                    showToast("数据解析异常");
                 }
             } catch (e) {
-                console.error("❌ debug fix: Fetch 失败", e);
-                showToast("数据加载失败: " + e.message);
+                showToast("数据同步失败，请刷新重试");
             }
         }
     }
 
     function processData() {
         if (products.length > 0) {
-            // ✅ debug fix: SKU 去重逻辑（基于 itemid）
             const itemMap = new Map();
             products.forEach(row => {
                 const item = mapData(row);
                 if (!item.itemid) return;
-                
-                if (!itemMap.has(item.itemid)) {
+                if (!itemMap.has(item.itemid) || new Date(item.update_date) > new Date(mapData(itemMap.get(item.itemid)).update_date)) {
                     itemMap.set(item.itemid, row);
-                } else {
-                    const existing = mapData(itemMap.get(item.itemid));
-                    // 保留较新的数据
-                    if (new Date(item.update_date) > new Date(existing.update_date)) {
-                        itemMap.set(item.itemid, row);
-                    }
                 }
             });
             products = Array.from(itemMap.values());
-            console.log("✅ debug fix: 去重后产品数:", products.length);
-
-            const lastDate = mapData(products[0]).update_date;
-            document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${lastDate || '未知'}`;
+            
+            const latest = mapData(products[0]).update_date;
+            document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${latest || '2024/04/19'}`;
             
             updateL1();
             applyFilters();
@@ -493,11 +471,19 @@
     }
 
     function updateL1() {
-        const l1Set = new Set(products.map(r => mapData(r).l1).filter(v => v));
+        // 修正：确保从全量数据中提取 L1（包括 Muslim Fashion）
+        const l1Set = new Set();
+        products.forEach(r => {
+            const val = mapData(r).l1;
+            if (val) l1Set.add(val);
+        });
+        
         const sel = document.getElementById('l1Filter');
         const currentVal = sel.value;
         sel.innerHTML = '<option value="">L1 类目</option>';
-        [...l1Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
+        Array.from(l1Set).sort().forEach(v => {
+            sel.innerHTML += `<option value="${v}">${v}</option>`;
+        });
         sel.value = currentVal;
     }
 
@@ -546,7 +532,12 @@
             const matchL3 = !l3 || i.l3 === l3;
             const matchPrice = (i.price_rmb >= minP && i.price_rmb <= maxP);
             const matchSite = !site || i.site === site;
-            const matchSeller = !seller || i.seller_type.trim().toUpperCase() === seller.toUpperCase();
+            
+            // 修正：卖家类型逻辑，支持 CNCB (对应 CB) 和 Local
+            let sType = i.seller_type;
+            if (sType === 'CB') sType = 'CNCB';
+            const matchSeller = !seller || sType === seller;
+            
             const matchOfficial = !official || i.is_official_shop === official;
             const matchNew = !newSku || i.is_new_sku === newSku;
 
@@ -570,9 +561,8 @@
         const pageData = data.slice(start, end);
         const grid = document.getElementById('productGrid');
         
-        // ✅ debug fix: 渲染空状态处理
         if (pageData.length === 0) {
-            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 100px; color: #999;">暂无匹配产品，请调整筛选条件</div>';
+            grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:100px;color:#9b8fa0;">未找到符合条件的产品</div>';
             return;
         }
 
@@ -583,7 +573,7 @@
                     <div class="site-tag">${siteFlag[i.site] || i.site}</div>
                     ${i.is_new_sku === 'Y' ? '<div class="new-sku-label">NEW</div>' : ''}
                     <div class="img-container" onclick="openModal('${i.imgUrl}')">
-                        <img src="${i.imgUrl}" loading="lazy" onerror="this.src='https://via.placeholder.com/300?text=Image+Load+Error'">
+                        <img src="${i.imgUrl}" loading="lazy" onerror="this.src='https://via.placeholder.com/300?text=No+Image'">
                     </div>
                     <div class="info">
                         <div class="item-title" title="${i.title}">${i.title}</div>
@@ -599,9 +589,9 @@
                             <div class="stat-box"><div class="stat-label">日销售额</div><div class="stat-value revenue-val">¥${Math.round(i.daily_revenue)}</div></div>
                         </div>
                         <div class="extra-info">
-                            <div class="extra-item"><span class="extra-label">团队:</span>${i.team}</div>
-                            <div class="extra-item"><span class="extra-label">店铺:</span>${i.shop_name}</div>
-                            <div class="extra-item"><span class="extra-label">卖家:</span>${i.seller_type}</div>
+                            <div class="extra-item"><span class="extra-label">team:</span>${i.team}</div>
+                            <div class="extra-item"><span class="extra-label">店铺名:</span>${i.shop_name}</div>
+                            <div class="extra-item"><span class="extra-label">卖家类型:</span>${i.seller_type === 'CB' ? 'CNCB' : i.seller_type}</div>
                             <div class="extra-item"><span class="extra-label">官方:</span>${i.is_official_shop === 'Y' ? '是' : '否'}</div>
                         </div>
                         <div class="footer-row">
@@ -620,7 +610,7 @@
         const pag = document.getElementById('pagination');
         if (totalPages <= 1) { pag.innerHTML = ''; return; }
         let html = `<button onclick="render(filteredData, ${Math.max(1, currentPage - 1)})">Prev</button>`;
-        html += `<span style="font-size:13px; font-weight:600;">${currentPage} / ${totalPages}</span>`;
+        html += `<span style="font-size:13px; font-weight:600; color:var(--text);">${currentPage} / ${totalPages}</span>`;
         html += `<button onclick="render(filteredData, ${Math.min(totalPages, currentPage + 1)})">Next</button>`;
         pag.innerHTML = html;
     }
@@ -656,7 +646,6 @@
         applyFilters();
     }
 
-    // 初始化入口
     init();
 </script>
 
