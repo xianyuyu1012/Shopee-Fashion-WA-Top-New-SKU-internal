@@ -423,33 +423,52 @@
         daily_revenue: toNum(row[18])
     });
 
-    async function init() {
-        const cache = localStorage.getItem(CACHE_KEY);
-        const cacheTime = localStorage.getItem(CACHE_KEY + '_time');
+    // --- 这是新代码：加入了详细错误捕获 ---
+async function init() {
+    const cache = localStorage.getItem(CACHE_KEY);
+    const cacheTime = localStorage.getItem(CACHE_KEY + '_time');
 
-        if (cache && cacheTime && (Date.now() - cacheTime < CACHE_TIME)) {
-            products = JSON.parse(cache);
-            processData();
-        } else {
-            try {
-                const res = await fetch(SHEET_URL);
-                if (!res.ok) throw new Error("Fetch Error");
-                const text = await res.text();
-                const rawRows = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-                const rows = rawRows.map(line => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
-                products = rows.slice(1);
-                
-                if (products.length > 0) {
-                    localStorage.setItem(CACHE_KEY, JSON.stringify(products));
-                    localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
-                    processData();
-                }
-            } catch (e) {
-                showToast("数据同步失败，请刷新重试");
+    if (cache && cacheTime && (Date.now() - cacheTime < CACHE_TIME)) {
+        products = JSON.parse(cache);
+        processData();
+    } else {
+        try {
+            console.log("正在尝试从服务器同步数据...");
+            // 检查 URL 是否存在
+            if (!SHEET_URL) throw new Error("SHEET_URL 配置为空");
+
+            const res = await fetch(SHEET_URL);
+            
+            // 捕获 HTTP 错误（如 404, 403 等）
+            if (!res.ok) throw new Error("网络请求失败，状态码: " + res.status);
+            
+            const text = await res.text();
+            
+            // 检查获取的内容是否合法
+            if (!text || text.length < 100) {
+                throw new Error("获取到的数据内容过短或格式不正确");
             }
+
+            const rawRows = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+            const rows = rawRows.map(line => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
+            products = rows.slice(1);
+            
+            if (products.length > 0) {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+                localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
+                processData();
+                console.log("数据同步成功！");
+            } else {
+                throw new Error("CSV 解析后没有有效数据行");
+            }
+        } catch (e) {
+            // 在浏览器控制台打印详细错误，方便你排查
+            console.error("【调试信息】同步详细错误:", e);
+            // 在网页前端显示具体的错误原因
+            showToast("数据同步失败: " + e.message);
         }
     }
-
+}
     function processData() {
         if (products.length > 0) {
             const itemMap = new Map();
