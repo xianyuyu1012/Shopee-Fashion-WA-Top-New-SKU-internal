@@ -230,8 +230,6 @@
         .meta-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
         .pill { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; border: 1px solid transparent; }
         .pill-cat { background: var(--tag-bg); color: var(--primary-dark); border-color: #f5c5d2; }
-        .pill-ado-pos { background: #f0fff4; color: #1a7a40; border-color: #b2dfca; }
-        .pill-ado-neg { background: var(--danger-bg); color: var(--danger); border-color: #facdcd; }
 
         .stats-row { display: flex; gap: 8px; }
         .stat-box {
@@ -376,42 +374,13 @@
 <footer>Shopee Fashion Internal Selection System - CONFIDENTIAL</footer>
 
 <script>
+    // ✅ modified: 使用唯一的 Google Sheet CSV 链接作为数据源
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
-    const CACHE_KEY = 'shopee_fashion_data_v2';
+    const CACHE_KEY = 'shopee_fashion_data_v3';
     const CACHE_TIME = 1000 * 60 * 60;
     let products = [], filteredData = [], currentPage = 1;
     const pageSize = 40;
     const siteFlag = { BR:'🇧🇷', MX:'🇲🇽', MY:'🇲🇾', PH:'🇵🇭', SG:'🇸🇬', TH:'🇹🇭', TW:'🇹🇼', VN:'🇻🇳' };
-
-    const NEW_DATASOURCE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
-
-    async function loadNewDataSource() {
-        console.log("正在加载新增数据源...");
-        try {
-            const response = await fetch(NEW_DATASOURCE_URL);
-            if (!response.ok) {
-                throw new Error(`无法访问数据源: ${response.status} ${response.statusText}`);
-            }
-            const csvText = await response.text();
-            const rows = csvText.split('\n').map(row => {
-                return row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-            }).filter(row => row.length > 5);
-            const newData = rows.slice(1);
-            if (newData.length > 0) {
-                console.log(`成功加载新增数据：${newData.length} 条记录`);
-                products = products.concat(newData);
-                processData(); // 使用统一的去重和初始化逻辑
-                showToast(`成功同步 ${newData.length} 条额外数据`);
-            }
-        } catch (error) {
-            console.warn("⚠️ 新增数据源接入失败:", error);
-            showToast("部分数据源加载失败，请检查公开访问权限");
-        }
-    }
-
-    window.addEventListener('load', () => {
-        setTimeout(loadNewDataSource, 1500);
-    });
 
     function showToast(msg) {
         const t = document.getElementById('toast');
@@ -445,8 +414,8 @@
         is_official_shop: clean(row[15]),
         is_new_sku: clean(row[16]),
         daily_sales: toNum(row[17]),
-        daily_revenue: toNum(row[18]),
-        ads_pos_neg: clean(row[19])
+        daily_revenue: toNum(row[18])
+        // ✅ modified: 已删除 ads_pos_neg: clean(row[19])
     });
 
     async function init() {
@@ -460,20 +429,21 @@
             try {
                 const res = await fetch(SHEET_URL);
                 const text = await res.text();
+                // 简单的 CSV 解析逻辑，处理可能的逗号问题
                 const rows = text.split('\n').map(r => r.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
                 products = rows.slice(1).filter(r => r.length > 5);
                 localStorage.setItem(CACHE_KEY, JSON.stringify(products));
                 localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
                 processData();
             } catch (e) {
-                showToast("原有数据源同步失败");
+                showToast("数据同步失败，请检查网络");
             }
         }
     }
 
     function processData() {
         if (products.length > 0) {
-            // --- 问题三修复：SKU 去重逻辑 ---
+            // SKU 去重逻辑：保留 itemid 唯一，优先保留最新的 update_date
             const itemMap = new Map();
             products.forEach(row => {
                 const item = mapData(row);
@@ -482,14 +452,12 @@
                     itemMap.set(id, row);
                 } else {
                     const existing = mapData(itemMap.get(id));
-                    // 如果当前行日期更新，则替换旧记录
                     if (new Date(item.update_date) > new Date(existing.update_date)) {
                         itemMap.set(id, row);
                     }
                 }
             });
             products = Array.from(itemMap.values());
-            // --- 去重结束 ---
 
             const lastDate = mapData(products[0]).update_date;
             document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${lastDate}`;
@@ -507,19 +475,12 @@
         sel.value = currentVal;
     }
 
-    // --- 问题一修复：严格联动类目逻辑 ---
     function updateL2() {
         const l1 = document.getElementById('l1Filter').value;
         const sel = document.getElementById('l2Filter');
         sel.innerHTML = '<option value="">L2 类目</option>';
-        
         if (l1) {
-            const l2Set = new Set(
-                products
-                    .filter(r => mapData(r).l1 === l1) // 严格受 L1 限制
-                    .map(r => mapData(r).l2)
-                    .filter(v => v)
-            );
+            const l2Set = new Set(products.filter(r => mapData(r).l1 === l1).map(r => mapData(r).l2).filter(v => v));
             [...l2Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
         }
         updateL3();
@@ -530,21 +491,14 @@
         const l2 = document.getElementById('l2Filter').value;
         const sel = document.getElementById('l3Filter');
         sel.innerHTML = '<option value="">L3 类目</option>';
-        
         if (l1 && l2) {
-            const l3Set = new Set(
-                products
-                    .filter(r => {
-                        const i = mapData(r);
-                        return i.l1 === l1 && i.l2 === l2; // 严格受 L1 和 L2 同时限制
-                    })
-                    .map(r => mapData(r).l3)
-                    .filter(v => v)
-            );
+            const l3Set = new Set(products.filter(r => {
+                const i = mapData(r);
+                return i.l1 === l1 && i.l2 === l2;
+            }).map(r => mapData(r).l3).filter(v => v));
             [...l3Set].sort().forEach(v => sel.innerHTML += `<option value="${v}">${v}</option>`);
         }
     }
-    // --- 类目联动修复结束 ---
 
     function applyFilters() {
         const kw = document.getElementById('searchInput').value.toLowerCase();
@@ -560,16 +514,13 @@
 
         filteredData = products.filter(r => {
             const i = mapData(r);
-            const matchKw = !kw || i.title.toLowerCase().includes(kw) || i.itemid.includes(kw) || i.shop_name.toLowerCase().includes(kw) || i.team.toLowerCase().includes(kw);
+            const matchKw = !kw || i.title.toLowerCase().includes(kw) || i.itemid.includes(kw) || i.shop_name.toLowerCase().includes(kw);
             const matchL1 = !l1 || i.l1 === l1;
             const matchL2 = !l2 || i.l2 === l2;
             const matchL3 = !l3 || i.l3 === l3;
             const matchPrice = (i.price_rmb >= minP && i.price_rmb <= maxP);
             const matchSite = !site || i.site === site;
-            
-            // --- 问题二修复：卖家类型 CNCB 筛选逻辑 ---
-            const matchSeller = !seller || clean(i.seller_type).trim().toUpperCase() === seller.trim().toUpperCase();
-            
+            const matchSeller = !seller || i.seller_type.trim().toUpperCase() === seller.toUpperCase();
             const matchOfficial = !official || i.is_official_shop === official;
             const matchNew = !newSku || i.is_new_sku === newSku;
 
@@ -592,6 +543,7 @@
         const end = start + pageSize;
         const pageData = data.slice(start, end);
         const grid = document.getElementById('productGrid');
+        
         grid.innerHTML = pageData.map(r => {
             const i = mapData(r);
             return `
@@ -607,8 +559,7 @@
                         </div>
                         <div class="meta-row">
                             <span class="pill pill-cat">${i.l2}</span>
-                            ${i.ads_pos_neg ? `<span class="pill ${i.ads_pos_neg.includes('+') ? 'pill-ado-pos' : 'pill-ado-neg'}">${i.ads_pos_neg}</span>` : ''}
-                        </div>
+                            </div>
                         <div class="stats-row">
                             <div class="stat-box"><div class="stat-label">日销量</div><div class="stat-value sales-val">${i.daily_sales}</div></div>
                             <div class="stat-box"><div class="stat-label">日销售额</div><div class="stat-value revenue-val">¥${Math.round(i.daily_revenue)}</div></div>
@@ -616,8 +567,8 @@
                         <div class="extra-info">
                             <div class="extra-item"><span class="extra-label">团队:</span>${i.team}</div>
                             <div class="extra-item"><span class="extra-label">店铺:</span>${i.shop_name}</div>
-                            <div class="extra-item"><span class="extra-label">卖家类型:</span>${i.seller_type}</div>
-                            <div class="extra-item"><span class="extra-label">官方店铺:</span>${i.is_official_shop === 'Y' ? '是' : '否'}</div>
+                            <div class="extra-item"><span class="extra-label">卖家:</span>${i.seller_type}</div>
+                            <div class="extra-item"><span class="extra-label">官方:</span>${i.is_official_shop === 'Y' ? '是' : '否'}</div>
                         </div>
                         <div class="footer-row">
                             <div class="itemid-box" onclick="copyText('${i.itemid}')">ID: ${i.itemid}</div>
