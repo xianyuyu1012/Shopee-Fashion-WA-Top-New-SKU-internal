@@ -474,20 +474,31 @@ async function init() {
         showToast("加载失败: " + e.message);
     }
 }
-    function processData() {
+   function processData() {
         if (products.length > 0) {
             const itemMap = new Map();
+            // 记录数据中的最大日期
+            let maxDateVal = "";
+
             products.forEach(row => {
                 const item = mapData(row);
                 if (!item.itemid) return;
+
+                // 比较并记录最新的日期
+                if (item.update_date && (!maxDateVal || item.update_date > maxDateVal)) {
+                    maxDateVal = item.update_date;
+                }
+                
                 if (!itemMap.has(item.itemid) || new Date(item.update_date) > new Date(mapData(itemMap.get(item.itemid)).update_date)) {
                     itemMap.set(item.itemid, row);
                 }
             });
             products = Array.from(itemMap.values());
             
-            const latest = mapData(products[0]).update_date;
-            document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${latest || '2024/04/19'}`;
+            // --- 这里的修改是关键 ---
+            // 如果 maxDateVal 存在则显示它，否则显示今天的日期
+            const displayDate = maxDateVal || new Date().toLocaleDateString();
+            document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${displayDate}`;
             
             updateL1();
             applyFilters();
