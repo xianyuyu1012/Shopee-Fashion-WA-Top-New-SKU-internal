@@ -374,7 +374,7 @@
 <footer>Shopee Fashion Internal Selection System - CONFIDENTIAL</footer>
 
 <script>
-    // ✅ modified: 使用唯一的 Google Sheet CSV 链接作为数据源
+    // ✅ debug fix: 明确数据源链接
     const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRvjtVCX-0LPWEHXrZKoAqs0vOslq7uIe51pGmHdfKkYVkaKxU1uzBpDRtndxN13ZqpjeefXg8Ns4Rd/pub?output=csv';
     const CACHE_KEY = 'shopee_fashion_data_v3';
     const CACHE_TIME = 1000 * 60 * 60;
@@ -395,6 +395,7 @@
         return parseFloat(val) || 0;
     };
 
+    // ✅ debug fix: 重新验证索引。确保 CSV 第17、18列对应 Sales 和 Revenue
     const mapData = (row) => ({
         title: clean(row[0]),
         price_rmb: toNum(row[1]),
@@ -415,10 +416,10 @@
         is_new_sku: clean(row[16]),
         daily_sales: toNum(row[17]),
         daily_revenue: toNum(row[18])
-        // ✅ modified: 已删除 ads_pos_neg: clean(row[19])
     });
 
     async function init() {
+        console.log("🚀 debug fix: 正在请求数据...");
         const cache = localStorage.getItem(CACHE_KEY);
         const cacheTime = localStorage.getItem(CACHE_KEY + '_time');
 
@@ -428,39 +429,64 @@
         } else {
             try {
                 const res = await fetch(SHEET_URL);
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                
                 const text = await res.text();
-                // 简单的 CSV 解析逻辑，处理可能的逗号问题
-                const rows = text.split('\n').map(r => r.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
-                products = rows.slice(1).filter(r => r.length > 5);
-                localStorage.setItem(CACHE_KEY, JSON.stringify(products));
-                localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
-                processData();
+                console.log("📊 debug fix: 原始数据前500字:", text.slice(0, 500));
+
+                // ✅ debug fix: 健壮的 CSV 解析逻辑
+                // 1. 处理 \r\n 换行 2. 过滤掉纯空行
+                const rawRows = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+                
+                // 使用正则表达式解析 CSV 字段（处理带引号的逗号）
+                const rows = rawRows.map(line => {
+                    return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+                });
+
+                console.log("📈 debug fix: 总行数:", rows.length);
+                
+                // 排除标题行
+                products = rows.slice(1);
+                
+                if (products.length > 0) {
+                    localStorage.setItem(CACHE_KEY, JSON.stringify(products));
+                    localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
+                    processData();
+                } else {
+                    console.error("❌ debug fix: 数据解析后为空");
+                    showToast("数据解析异常");
+                }
             } catch (e) {
-                showToast("数据同步失败，请检查网络");
+                console.error("❌ debug fix: Fetch 失败", e);
+                showToast("数据加载失败: " + e.message);
             }
         }
     }
 
     function processData() {
         if (products.length > 0) {
-            // SKU 去重逻辑：保留 itemid 唯一，优先保留最新的 update_date
+            // ✅ debug fix: SKU 去重逻辑（基于 itemid）
             const itemMap = new Map();
             products.forEach(row => {
                 const item = mapData(row);
-                const id = item.itemid;
-                if (!itemMap.has(id)) {
-                    itemMap.set(id, row);
+                if (!item.itemid) return;
+                
+                if (!itemMap.has(item.itemid)) {
+                    itemMap.set(item.itemid, row);
                 } else {
-                    const existing = mapData(itemMap.get(id));
+                    const existing = mapData(itemMap.get(item.itemid));
+                    // 保留较新的数据
                     if (new Date(item.update_date) > new Date(existing.update_date)) {
-                        itemMap.set(id, row);
+                        itemMap.set(item.itemid, row);
                     }
                 }
             });
             products = Array.from(itemMap.values());
+            console.log("✅ debug fix: 去重后产品数:", products.length);
 
             const lastDate = mapData(products[0]).update_date;
-            document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${lastDate}`;
+            document.getElementById('lastUpdateDisplay').textContent = `数据更新至: ${lastDate || '未知'}`;
+            
             updateL1();
             applyFilters();
         }
@@ -544,22 +570,30 @@
         const pageData = data.slice(start, end);
         const grid = document.getElementById('productGrid');
         
+        // ✅ debug fix: 渲染空状态处理
+        if (pageData.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 100px; color: #999;">暂无匹配产品，请调整筛选条件</div>';
+            return;
+        }
+
         grid.innerHTML = pageData.map(r => {
             const i = mapData(r);
             return `
                 <div class="card">
                     <div class="site-tag">${siteFlag[i.site] || i.site}</div>
                     ${i.is_new_sku === 'Y' ? '<div class="new-sku-label">NEW</div>' : ''}
-                    <div class="img-container" onclick="openModal('${i.imgUrl}')"><img src="${i.imgUrl}" loading="lazy"></div>
+                    <div class="img-container" onclick="openModal('${i.imgUrl}')">
+                        <img src="${i.imgUrl}" loading="lazy" onerror="this.src='https://via.placeholder.com/300?text=Image+Load+Error'">
+                    </div>
                     <div class="info">
-                        <div class="item-title">${i.title}</div>
+                        <div class="item-title" title="${i.title}">${i.title}</div>
                         <div class="price-row">
                             <span class="price-label">¥</span><span class="price-value">${i.price_rmb}</span>
                             <span class="price-local">(${i.price_local})</span>
                         </div>
                         <div class="meta-row">
                             <span class="pill pill-cat">${i.l2}</span>
-                            </div>
+                        </div>
                         <div class="stats-row">
                             <div class="stat-box"><div class="stat-label">日销量</div><div class="stat-value sales-val">${i.daily_sales}</div></div>
                             <div class="stat-box"><div class="stat-label">日销售额</div><div class="stat-value revenue-val">¥${Math.round(i.daily_revenue)}</div></div>
@@ -622,6 +656,7 @@
         applyFilters();
     }
 
+    // 初始化入口
     init();
 </script>
 
