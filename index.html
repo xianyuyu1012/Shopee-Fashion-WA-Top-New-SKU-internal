@@ -425,48 +425,53 @@
 
     // --- 这是新代码：加入了详细错误捕获 ---
 async function init() {
+    // 检查是否有旧版本缓存并尝试清理，释放空间
+    const KEYS_TO_CLEAR = ['shopee_fashion_data_v1', 'shopee_fashion_data_v2', 'shopee_fashion_data_v3'];
+    KEYS_TO_CLEAR.forEach(k => localStorage.removeItem(k));
+
     const cache = localStorage.getItem(CACHE_KEY);
     const cacheTime = localStorage.getItem(CACHE_KEY + '_time');
 
     if (cache && cacheTime && (Date.now() - cacheTime < CACHE_TIME)) {
-        products = JSON.parse(cache);
-        processData();
-    } else {
         try {
-            console.log("正在尝试从服务器同步数据...");
-            // 检查 URL 是否存在
-            if (!SHEET_URL) throw new Error("SHEET_URL 配置为空");
+            products = JSON.parse(cache);
+            processData();
+            return; // 成功加载缓存则退出
+        } catch (e) {
+            localStorage.removeItem(CACHE_KEY); // 缓存损坏则清理
+        }
+    }
 
-            const res = await fetch(SHEET_URL);
-            
-            // 捕获 HTTP 错误（如 404, 403 等）
-            if (!res.ok) throw new Error("网络请求失败，状态码: " + res.status);
-            
-            const text = await res.text();
-            
-            // 检查获取的内容是否合法
-            if (!text || text.length < 100) {
-                throw new Error("获取到的数据内容过短或格式不正确");
-            }
+    try {
+        console.log("正在从服务器获取最新数据...");
+        const res = await fetch(SHEET_URL);
+        if (!res.ok) throw new Error("网络请求失败: " + res.status);
+        
+        const text = await res.text();
+        if (!text || text.length < 100) throw new Error("获取到的数据为空");
 
-            const rawRows = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-            const rows = rawRows.map(line => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
-            products = rows.slice(1);
-            
-            if (products.length > 0) {
+        const rawRows = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+        // 跳过表头解析数据
+        const rows = rawRows.slice(1).map(line => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/));
+        
+        if (rows.length > 0) {
+            products = rows;
+            // 尝试存入缓存
+            try {
                 localStorage.setItem(CACHE_KEY, JSON.stringify(products));
                 localStorage.setItem(CACHE_KEY + '_time', Date.now().toString());
-                processData();
-                console.log("数据同步成功！");
-            } else {
-                throw new Error("CSV 解析后没有有效数据行");
+            } catch (quotaError) {
+                console.warn("存储空间依然不足，本次将不使用缓存加载");
+                // 如果依然存不下，就清理掉所有存储尝试直接运行
+                localStorage.clear(); 
             }
-        } catch (e) {
-            // 在浏览器控制台打印详细错误，方便你排查
-            console.error("【调试信息】同步详细错误:", e);
-            // 在网页前端显示具体的错误原因
-            showToast("数据同步失败: " + e.message);
+            processData();
+        } else {
+            throw new Error("CSV 解析后无有效行");
         }
+    } catch (e) {
+        console.error("同步详细错误:", e);
+        showToast("加载失败: " + e.message);
     }
 }
     function processData() {
